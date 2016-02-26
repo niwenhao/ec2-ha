@@ -1,0 +1,129 @@
+#!/bin/sh
+
+#######################################################################
+# Initialization:
+
+: ${OCF_FUNCTIONS_DIR=${OCF_ROOT}/lib/heartbeat}
+. ${OCF_FUNCTIONS_DIR}/ocf-shellfuncs
+. ${OCF_FUNCTIONS_DIR}/findif.sh
+
+#######################################################################
+
+
+meta_data() {
+	cat <<END
+<?xml version="1.0"?>
+<!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
+<resource-agent name="EC2SecondIP">
+<version>1.0</version>
+
+<longdesc lang="en">
+This agent while switch sencond ip to this instance
+</longdesc>
+
+<shortdesc lang="en">Sencond IP address HA</shortdesc>
+
+<parameters>
+<parameter name="vip" unique="1" required="1">
+<longdesc lang="en">
+The IPv4 (dotted quad notation) or IPv6 address (colon hexadecimal notation)
+example IPv4 "192.168.1.1".
+example IPv6 "2001:db8:DC28:0:0:FC57:D4C8:1FFF".
+</longdesc>
+<shortdesc lang="en">IPv4 or IPv6 address</shortdesc>
+<content type="string" default="" />
+</parameter>
+<parameter name="netmask">
+<longdesc lang="en">
+The netmask for the interface in CIDR format
+(e.g., 24 and not 255.255.255.0)
+
+If unspecified, the script will also try to determine this from the
+routing table.
+</longdesc>
+<shortdesc lang="en">CIDR netmask</shortdesc>
+<content type="string" default=""/>
+</parameter>
+
+</parameters>
+<actions>
+<action name="start"   timeout="20s" />
+<action name="stop"    timeout="20s" />
+<action name="status" depth="0"  timeout="20s" interval="10s" />
+<action name="monitor" depth="0"  timeout="20s" interval="10s" />
+<action name="meta-data"  timeout="5s" />
+<action name="validate-all"  timeout="20s" />
+</actions>
+</resource-agent>
+END
+
+	exit $OCF_SUCCESS
+}
+
+ip_usage() {
+	cat <<END
+usage: $0 {start|stop|status|monitor|validate-all|meta-data}
+
+Expects to have a fully populated OCF RA-compliant environment set.
+END
+}
+
+ip_start() {
+    ocf_log info "Try to startup httpd"
+    curl http://localhost/ > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        systemctl start httpd
+    fi
+	exit $OCF_SUCCESS
+}
+
+ip_stop() {
+    ocf_log info "Try to stop httpd"
+    curl http://localhost/ > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        systemctl stop httpd
+    fi
+    curl http://localhost/ > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        pkill -9 httpd
+    fi
+	exit $OCF_SUCCESS
+}
+
+ip_monitor() {
+    ocf_log info "Try to monitor httpd"
+    curl http://localhost/ > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        exit $OCF_SUCCESS
+    else
+        exit $OCF_NOT_RUNNING
+    fi
+}
+
+
+ip_validate() {
+    ocf_log info "Try to validate httpd"
+    exit $OCF_SUCCESS
+}
+
+case $__OCF_ACTION in
+meta-data)	meta_data
+		;;
+usage|help)	ip_usage
+		exit $OCF_SUCCESS
+		;;
+start)		ip_start
+		;;
+stop)		ip_stop
+		;;
+status)		ip_monitor
+		;;
+monitor)	ip_monitor
+		;;
+validate-all)   ip_validate
+        ;;
+*)		ip_usage
+		exit $OCF_ERR_UNIMPLEMENTED
+		;;
+esac
+# vi:sw=4:ts=8:
