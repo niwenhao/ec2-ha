@@ -72,6 +72,8 @@ END
 MY_PID=$$
 SELF_DESC_FILE=/tmp/${MY_PID}_selfinst.json
 CURR_DESC_FILE=/tmp/${MY_PID}_currinst.json
+SELF_INST_ID=`curl http://169.254.169.254/latest/meta-data/instance-id`
+/usr/bin/aws ec2 describe-instances --filter "Name=tag:hostname,Values=`hostname`" > $SELF_DESC_FILE 2>/dev/null || return $OCF_NOT_RUNNING
 
 eip_usage() {
 	cat <<END
@@ -86,8 +88,6 @@ eip_start() {
     if [ $? -ne 0 ]; then
         return $OCF_NOT_RUNNING
     fi
-    /usr/bin/aws ec2 describe-instances --filter "Name=tag:hostname,Values=`hostname`" > $SELF_DESC_FILE 2>/dev/null || return $OCF_NOT_RUNNING
-    SELF_INST_ID=$(ruby -e 'require "json"; print JSON.load(STDIN)["Reservations"][0]["Instances"][0]["InstanceId"]' < ${SELF_DESC_FILE})
     SELF_IF_ID=$(ruby -e 'require "json"; print JSON.load(STDIN)["Reservations"][0]["Instances"][0]["NetworkInterfaces"][0]["NetworkInterfaceId"]' < ${SELF_DESC_FILE})
     /usr/bin/aws ec2 describe-instances --filter "Name=network-interface.addresses.private-ip-address,Values=${OCF_RESKEY_elastic_ip}" > $CURR_DESC_FILE 2>/dev/null
     if [ $? -eq 0 ]; then
