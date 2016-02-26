@@ -37,7 +37,7 @@ meta_data() {
 	cat <<END
 <?xml version="1.0"?>
 <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
-<resource-agent name="eip" version="0.9">
+<resource-agent name="eip">
 <version>1.0</version>
 
 <longdesc lang="en">
@@ -46,7 +46,7 @@ This is a Resource Agent for AWS EC2 EIP (Elastic IP Address).
 <shortdesc lang="en">AWS EC2 EIP resource agent</shortdesc>
 
 <parameters>
-<parameter name="elastic_ip" required="1">
+<parameter name="vip" required="1">
 <longdesc lang="en">
 The Elastic IP address
 </longdesc>
@@ -73,7 +73,7 @@ MY_PID=$$
 SELF_DESC_FILE=/tmp/${MY_PID}_selfinst.json
 CURR_DESC_FILE=/tmp/${MY_PID}_currinst.json
 SELF_INST_ID=`curl http://169.254.169.254/latest/meta-data/instance-id`
-/usr/bin/aws ec2 describe-instances --filter "Name=tag:hostname,Values=`hostname`" > $SELF_DESC_FILE 2>/dev/null || return $OCF_NOT_RUNNING
+/usr/bin/aws ec2 describe-instances --instance-ids $SELF_INST_ID > $SELF_DESC_FILE 2>/dev/null
 
 eip_usage() {
 	cat <<END
@@ -89,7 +89,7 @@ eip_start() {
         return $OCF_NOT_RUNNING
     fi
     SELF_IF_ID=$(ruby -e 'require "json"; print JSON.load(STDIN)["Reservations"][0]["Instances"][0]["NetworkInterfaces"][0]["NetworkInterfaceId"]' < ${SELF_DESC_FILE})
-    /usr/bin/aws ec2 describe-instances --filter "Name=network-interface.addresses.private-ip-address,Values=${OCF_RESKEY_elastic_ip}" > $CURR_DESC_FILE 2>/dev/null
+    /usr/bin/aws ec2 describe-instances --filter "Name=network-interface.addresses.private-ip-address,Values=${OCF_RESKEY_vip}" > $CURR_DESC_FILE 2>/dev/null
     if [ $? -eq 0 ]; then
         CURR_INST_ID=$(ruby -e 'require "json"; print JSON.load(STDIN)["Reservations"][0]["Instances"][0]["InstanceId"]' < ${CURR_DESC_FILE})
         CURR_IF_ID=$(ruby -e 'require "json"; print JSON.load(STDIN)["Reservations"][0]["Instances"][0]["NetworkInterfaces"][0]["NetworkInterfaceId"]' < ${CURR_DESC_FILE})
@@ -97,8 +97,8 @@ eip_start() {
             return $OCF_SUCCESS
         fi
     fi
-    /usr/bin/aws ec2 unassign-private-ip-addresses --network-interface-id $CURR_IF_ID --private-ip-addresses ${OCF_RESKEY_elastic_ip}
-    /usr/bin/aws ec2 assign-private-ip-addresses --network-interface-id $SELF_IF_ID --private-ip-addresses ${OCF_RESKEY_elastic_ip} || return $OCF_NOT_RUNNING
+    /usr/bin/aws ec2 unassign-private-ip-addresses --network-interface-id $CURR_IF_ID --private-ip-addresses ${OCF_RESKEY_vip}
+    /usr/bin/aws ec2 assign-private-ip-addresses --network-interface-id $SELF_IF_ID --private-ip-addresses ${OCF_RESKEY_vip} || return $OCF_NOT_RUNNING
 
     return $OCF_SUCCESS
 }
@@ -113,7 +113,7 @@ eip_monitor() {
         return $OCF_NOT_RUNNING
     fi
 
-    /usr/bin/aws ec2 describe-instances --filter "Name=tag:hostname,Values=`hostname`" | grep "\"PrivateIpAddress\": \"${OCF_RESKEY_elastic_ip}\"" > /dev/null
+    /usr/bin/aws ec2 describe-instances --filter "Name=tag:hostname,Values=`hostname`" | grep "\"PrivateIpAddress\": \"${OCF_RESKEY_vip}\"" > /dev/null
     if [ $? -ne 0 ]; then
         return $OCF_NOT_RUNNING
     fi
@@ -125,6 +125,7 @@ eip_validate() {
     return $OCF_SUCCESS
 }
 
+echo "ACTION => ${__OCF_ACTION}" >> /tmp/eip.log
 case $__OCF_ACTION in
 meta-data)	meta_data
 		exit $OCF_SUCCESS
