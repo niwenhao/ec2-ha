@@ -39,6 +39,7 @@ describe_with_instid() {
 
 find_instid() {
 	DESC_FILE=$1
+	ocf_log debug "Take instance id from describe json file($DESC_FILE)"
 	CONT=$(ruby -e 'require "json"; \
 					print JSON.load(STDIN)["Reservations"][0]["Instances"][0]["InstanceId"]' < ${DESC_FILE})
 	if [ $? -ne 0 ]; then
@@ -49,6 +50,7 @@ find_instid() {
 
 find_nicid() {
 	DESC_FILE=$1
+	ocf_log debug "Take nic id from describe json file($DESC_FILE)"
 	CONT=$(ruby -e 'require "json"; \
 					print JSON.load(STDIN)["Reservations"][0]["Instances"][0]["NetworkInterfaces"][0]["NetworkInterfaceId"]' < ${DESC_FILE})
 	if [ $? -ne 0 ]; then
@@ -71,6 +73,14 @@ assign_ip_to_nic() {
 	ocf_log debug "Assign $IP from $NIC"
 	/usr/bin/aws ec2 assign-private-ip-addresses --network-interface-id $NIC --private-ip-addresses $IP
 	return $?
+}
+
+is_ip_assigned() {
+	FILE=$2
+	
+	ruby -e 'require "json"; \
+			 privateIps = JSON.load(STDIN)["Reservations"][0][["Instances"][0]["NetworkInterfaces"]; \
+			 privateIps.each { |ip| print "#{ip["PrivateIpAddress"]} " }'
 }
 
 #######################################################################
@@ -183,20 +193,29 @@ ip_start() {
 
 ip_stop() {
 	ocf_log info "Try to stop httpd"
-	curl http://localhost/ > /dev/null 2>&1
-	if [ $? -eq 0 ]; then
-		service httpd stop
+	ocf_log debug "Describe instance with ip(${OCF_RESKEY_vip})"
+	describe_with_nicip ${OCF_RESKEY_vip} ${CURR_DESC_FILE}
+	if [ $? -ne 0 ]; then
+		exit $OCF_ERR_CONFIGURED
 	fi
-	curl http://localhost/ > /dev/null 2>&1
+	instid=$(find_instid $CURR_DESC_FILE)
 	if [ $? -eq 0 ]; then
-		pkill -9 httpd
+		if [ "$instid" == "$SELF_INST_ID" ]; then
+			ocf_log debug "Unassign ip (${OCF_RESKEY_vip})"
+			nicid=$(find_nicid ${CURR_DESC_FILE})
+			if [ $? -ne 0 ]; then
+				exit $OCF_ERR_CONFIGURED
+			fi
+			unassign_ip_from_nic $nicid ${OCF_RESKEY_vip}
+		fi
 	fi
 	exit $OCF_SUCCESS
 }
 
 ip_monitor() {
 	ocf_log info "Try to monitor httpd"
-	curl http://localhost/ > /dev/null 2>&1
+
+	curl http://169.254.169.254/latest/meta-data/network/interfaces/macs/$(curl http://169.254.169.254/latest/meta-data/network/interfaces/macs/ | head -1)local-ipv4s | grep ${OCF_RESKEY_vip} > /dev/null
 	if [ $? -eq 0 ]; then
 		exit $OCF_SUCCESS
 	else
