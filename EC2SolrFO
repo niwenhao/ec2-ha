@@ -223,6 +223,11 @@ ip_start() {
 
 	su - ${OCF_RESKEY_solruser} -c "${OCF_RESKEY_solrcommand}"
 	
+	pgrep -lf solr | grep 'solr.install.dir' > /dev/null
+	if [ $? -ne 0 ]; then
+		exit $OCF_ERR_INSTALLED
+	fi
+	
 	exit $OCF_SUCCESS
 }
 
