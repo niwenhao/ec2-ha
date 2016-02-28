@@ -9,7 +9,7 @@
 
 #######################################################################
 
-SELF_INST_ID=$(curl http://169.254.169.254/latest/meta-data/instance-id)
+SELF_INST_ID=$(curl http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
 CURR_INST_ID=""
 SELF_NIC_ID=""
 CURR_NIC_ID=""
@@ -25,6 +25,7 @@ describe_with_nicip() {
 	IP=$1
 	FILE=$2
 	ocf_log debug "Describe instance assigned the ip(${IP})"
+	ocf_log debug "/usr/bin/aws ec2 describe-instances --filter Name=network-interface.addresses.private-ip-address,Values=${IP} > $FILE"
 	/usr/bin/aws ec2 describe-instances --filter "Name=network-interface.addresses.private-ip-address,Values=${IP}" > $FILE
 	return $?
 }
@@ -33,6 +34,7 @@ describe_with_instid() {
 	INSTID=$1
 	FILE=$2
 	ocf_log debug "Describe instance with instance id($INSTID)"
+	ocf_log debug "/usr/bin/aws ec2 describe-instances --instance-ids ${INSTID} > $FILE"
 	/usr/bin/aws ec2 describe-instances --instance-ids ${INSTID} > $FILE 2>/dev/null
 	return $?
 }
@@ -63,24 +65,22 @@ unassign_ip_from_nic() {
 	NIC=$1
 	IP=$2
 	ocf_log debug "Unassign $IP from $NIC"
+	ocf_log debug "execute: /usr/bin/aws ec2 unassign-private-ip-addresses --network-interface-id $NIC --private-ip-addresses $IP"
 	/usr/bin/aws ec2 unassign-private-ip-addresses --network-interface-id $NIC --private-ip-addresses $IP
+	echo "sleep ${OCF_RESKEY_awsdelay}"
+	sleep ${OCF_RESKEY_awsdelay}
 	return $?
 }
 
 assign_ip_to_nic() {
 	NIC=$1
 	IP=$2
-	ocf_log debug "Assign $IP from $NIC"
+	ocf_log debug "Assign $IP to $NIC"
+	ocf_log debug "/usr/bin/aws ec2 assign-private-ip-addresses --network-interface-id $NIC --private-ip-addresses $IP"
 	/usr/bin/aws ec2 assign-private-ip-addresses --network-interface-id $NIC --private-ip-addresses $IP
+	echo "sleep ${OCF_RESKEY_awsdelay}"
+	sleep ${OCF_RESKEY_awsdelay}
 	return $?
-}
-
-is_ip_assigned() {
-	FILE=$2
-	
-	ruby -e 'require "json"; \
-			 privateIps = JSON.load(STDIN)["Reservations"][0][["Instances"][0]["NetworkInterfaces"]; \
-			 privateIps.each { |ip| print "#{ip["PrivateIpAddress"]} " }'
 }
 
 #######################################################################
@@ -108,16 +108,13 @@ example IPv6 "2001:db8:DC28:0:0:FC57:D4C8:1FFF".
 <shortdesc lang="en">IPv4 or IPv6 address</shortdesc>
 <content type="string" default="" />
 </parameter>
-<parameter name="netmask">
+<parameter name="awsdelay" required="1">
 <longdesc lang="en">
-The netmask for the interface in CIDR format
-(e.g., 24 and not 255.255.255.0)
-
-If unspecified, the script will also try to determine this from the
-routing table.
+The delay to effect after perform a aws api call.
+The next operation will occures after the time.
 </longdesc>
-<shortdesc lang="en">CIDR netmask</shortdesc>
-<content type="string" default=""/>
+<shortdesc lang="en">aws api delay</shortdesc>
+<content type="string" default="5"/>
 </parameter>
 
 </parameters>
@@ -144,7 +141,7 @@ END
 }
 
 ip_start() {
-	ocf_log info "Try to startup httpd"
+	ocf_log info "Try to start"
 	ocf_log debug "Find instance id assigned ip(${OCF_RESKEY_vip})"
 	describe_with_nicip ${OCF_RESKEY_vip} ${CURR_DESC_FILE}
 	if [ $? -ne 0 ]; then
@@ -160,7 +157,7 @@ ip_start() {
 			fi
 			unassign_ip_from_nic $CURR_NIC_ID ${OCF_RESKEY_vip}
 			ocf_log debug "Assign ip(${OCF_RESKEY_vip}) to me"
-			describe_instance_withid ${SELF_INST_ID} ${SELF_DESC_FILE}
+			describe_with_instid ${SELF_INST_ID} ${SELF_DESC_FILE}
 			if [ $? -ne 0 ]; then
 				exit $OCF_ERR_CONFIGURED
 			fi
@@ -174,7 +171,7 @@ ip_start() {
 			fi
 		fi
 	else
-		describe_instance_withid ${SELF_INST_ID} ${SELF_DESC_FILE}
+		describe_with_instid ${SELF_INST_ID} ${SELF_DESC_FILE}
 		if [ $? -ne 0 ]; then
 			exit $OCF_ERR_CONFIGURED
 		fi
@@ -192,7 +189,7 @@ ip_start() {
 }
 
 ip_stop() {
-	ocf_log info "Try to stop httpd"
+	ocf_log info "Try to stop"
 	ocf_log debug "Describe instance with ip(${OCF_RESKEY_vip})"
 	describe_with_nicip ${OCF_RESKEY_vip} ${CURR_DESC_FILE}
 	if [ $? -ne 0 ]; then
@@ -213,9 +210,12 @@ ip_stop() {
 }
 
 ip_monitor() {
-	ocf_log info "Try to monitor httpd"
+	ocf_log info "Try to monitor"
 
-	curl http://169.254.169.254/latest/meta-data/network/interfaces/macs/$(curl http://169.254.169.254/latest/meta-data/network/interfaces/macs/ | head -1)local-ipv4s | grep ${OCF_RESKEY_vip} > /dev/null
+	nicid=$(curl http://169.254.169.254/latest/meta-data/network/interfaces/macs/ 2>/dev/null | head -1)
+	ocf_log debug "Monitor nic id -> ($nicid)"
+
+	curl http://169.254.169.254/latest/meta-data/network/interfaces/macs/${nicid}local-ipv4s 2>/dev/null | grep ${OCF_RESKEY_vip} > /dev/null
 	if [ $? -eq 0 ]; then
 		exit $OCF_SUCCESS
 	else
@@ -225,7 +225,7 @@ ip_monitor() {
 
 
 ip_validate() {
-	ocf_log info "Try to validate httpd"
+	ocf_log info "Try to validate"
 	exit $OCF_SUCCESS
 }
 
