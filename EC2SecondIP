@@ -9,6 +9,71 @@
 
 #######################################################################
 
+SELF_INST_ID=$(curl http://169.254.169.254/latest/meta-data/instance-id)
+CURR_INST_ID=""
+SELF_NIC_ID=""
+CURR_NIC_ID=""
+BASE_DIR="/tmp/EC2SecondIP"
+mkdir -p $BASE_DIR
+CURR_DESC_FILE="${BASE_DIR}/instance-describe-${OCF_RESKEY_vip}.json"
+SELF_DESC_FILE="${BASE_DIR}/instance-describe-${SELF_INST_ID}.json"
+
+#######################################################################
+# Common functions
+
+describe_with_nicip() {
+	IP=$1
+	FILE=$2
+	ocf_log debug "Describe instance assigned the ip(${IP})"
+	/usr/bin/aws ec2 describe-instances --filter "Name=network-interface.addresses.private-ip-address,Values=${IP}" > $FILE
+	return $?
+}
+
+describe_with_instid() {
+	INSTID=$1
+	FILE=$2
+	ocf_log debug "Describe instance with instance id($INSTID)"
+	/usr/bin/aws ec2 describe-instances --instance-ids ${INSTID} > $FILE 2>/dev/null
+	return $?
+}
+
+find_instid() {
+	DESC_FILE=$1
+	CONT=$(ruby -e 'require "json"; \
+					print JSON.load(STDIN)["Reservations"][0]["Instances"][0]["InstanceId"]' < ${DESC_FILE})
+	if [ $? -ne 0 ]; then
+		return 100
+	fi
+	echo $CONT
+}
+
+find_nicid() {
+	DESC_FILE=$1
+	CONT=$(ruby -e 'require "json"; \
+					print JSON.load(STDIN)["Reservations"][0]["Instances"][0]["NetworkInterfaces"][0]["NetworkInterfaceId"]' < ${DESC_FILE})
+	if [ $? -ne 0 ]; then
+		return 100
+	fi
+	echo $CONT
+}
+
+unassign_ip_from_nic() {
+	NIC=$1
+	IP=$2
+	ocf_log debug "Unassign $IP from $NIC"
+	/usr/bin/aws ec2 unassign-private-ip-addresses --network-interface-id $NIC --private-ip-addresses $IP
+	return $?
+}
+
+assign_ip_to_nic() {
+	NIC=$1
+	IP=$2
+	ocf_log debug "Assign $IP from $NIC"
+	/usr/bin/aws ec2 assign-private-ip-addresses --network-interface-id $NIC --private-ip-addresses $IP
+	return $?
+}
+
+#######################################################################
 
 meta_data() {
 	cat <<END
@@ -69,41 +134,80 @@ END
 }
 
 ip_start() {
-    ocf_log info "Try to startup httpd"
-    curl http://localhost/ > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        systemctl start httpd
-    fi
+	ocf_log info "Try to startup httpd"
+	ocf_log debug "Find instance id assigned ip(${OCF_RESKEY_vip})"
+	describe_with_nicip ${OCF_RESKEY_vip} ${CURR_DESC_FILE}
+	if [ $? -ne 0 ]; then
+		exit $OCF_ERR_CONFIGURED
+	fi
+	CURR_INST_ID=$(find_instid $CURR_DESC_FILE)
+	if [ $? -eq 0 ]; then
+		if [ "$CURR_INST_ID" != "$SELF_INST_ID" ]; then
+			ocf_log debug "Unassign ip(${OCF_RESKEY_vip})"
+			CURR_NIC_ID=$(find_nicid $CURR_DESC_FILE)
+			if [ $? -ne 0 ]; then
+				exit $OCF_ERR_CONFIGURED
+			fi
+			unassign_ip_from_nic $CURR_NIC_ID ${OCF_RESKEY_vip}
+			ocf_log debug "Assign ip(${OCF_RESKEY_vip}) to me"
+			describe_instance_withid ${SELF_INST_ID} ${SELF_DESC_FILE}
+			if [ $? -ne 0 ]; then
+				exit $OCF_ERR_CONFIGURED
+			fi
+			SELF_NIC_ID=$(find_nicid $SELF_DESC_FILE)
+			if [ $? -ne 0 ]; then
+				exit $OCF_ERR_CONFIGURED
+			fi
+			assign_ip_to_nic $SELF_NIC_ID ${OCF_RESKEY_vip}
+			if [ $? -ne 0 ]; then
+				exit $OCF_ERR_CONFIGURED
+			fi
+		fi
+	else
+		describe_instance_withid ${SELF_INST_ID} ${SELF_DESC_FILE}
+		if [ $? -ne 0 ]; then
+			exit $OCF_ERR_CONFIGURED
+		fi
+		SELF_NIC_ID=$(find_nicid $SELF_DESC_FILE)
+		if [ $? -ne 0 ]; then
+			exit $OCF_ERR_CONFIGURED
+		fi
+		assign_ip_to_nic $SELF_NIC_ID ${OCF_RESKEY_vip}
+		if [ $? -ne 0 ]; then
+			exit $OCF_ERR_CONFIGURED
+		fi
+	fi
+	
 	exit $OCF_SUCCESS
 }
 
 ip_stop() {
-    ocf_log info "Try to stop httpd"
-    curl http://localhost/ > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        systemctl stop httpd
-    fi
-    curl http://localhost/ > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        pkill -9 httpd
-    fi
+	ocf_log info "Try to stop httpd"
+	curl http://localhost/ > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		service httpd stop
+	fi
+	curl http://localhost/ > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		pkill -9 httpd
+	fi
 	exit $OCF_SUCCESS
 }
 
 ip_monitor() {
-    ocf_log info "Try to monitor httpd"
-    curl http://localhost/ > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        exit $OCF_SUCCESS
-    else
-        exit $OCF_NOT_RUNNING
-    fi
+	ocf_log info "Try to monitor httpd"
+	curl http://localhost/ > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		exit $OCF_SUCCESS
+	else
+		exit $OCF_NOT_RUNNING
+	fi
 }
 
 
 ip_validate() {
-    ocf_log info "Try to validate httpd"
-    exit $OCF_SUCCESS
+	ocf_log info "Try to validate httpd"
+	exit $OCF_SUCCESS
 }
 
 case $__OCF_ACTION in
@@ -121,7 +225,7 @@ status)		ip_monitor
 monitor)	ip_monitor
 		;;
 validate-all)   ip_validate
-        ;;
+		;;
 *)		ip_usage
 		exit $OCF_ERR_UNIMPLEMENTED
 		;;
