@@ -108,6 +108,15 @@ example IPv6 "2001:db8:DC28:0:0:FC57:D4C8:1FFF".
 <shortdesc lang="en">IPv4 or IPv6 address</shortdesc>
 <content type="string" default="" />
 </parameter>
+
+<parameter name="mask" required="1">
+<longdesc lang="en">
+The netmask to use ip addr add
+</longdesc>
+<shortdesc lang="en">mask</shortdesc>
+<content type="string" default="24" />
+</parameter>
+
 <parameter name="awsdelay" required="1">
 <longdesc lang="en">
 The delay to effect after perform a aws api call.
@@ -184,6 +193,17 @@ ip_start() {
 			exit $OCF_ERR_CONFIGURED
 		fi
 	fi
+
+	ocf_log debug "Try to append the vip to eth0"
+	ocf_log debug "ip addr list dev eth0 | grep ${OCF_RESKEY_vip}"
+	ip addr list dev eth0 | grep " ${OCF_RESKEY_vip}/" > /dev/null
+	if [ $? -ne 0 ]; then
+		ocf_log debug "ip addr add ${OCF_RESKEY_vip}/${OCF_RESKEY_mask} dev eth0"
+		ip addr add ${OCF_RESKEY_vip}/${OCF_RESKEY_mask} dev eth0
+		if [ $? -ne 0 ]; then
+			exit $OCF_ERR_CONFIGURED
+		fi
+	fi
 	
 	exit $OCF_SUCCESS
 }
@@ -204,6 +224,17 @@ ip_stop() {
 				exit $OCF_ERR_CONFIGURED
 			fi
 			unassign_ip_from_nic $nicid ${OCF_RESKEY_vip}
+		fi
+	fi
+
+	ocf_log debug "Try to remove the vip from eth0"
+	ocf_log debug "ip addr list dev eth0 | grep ${OCF_RESKEY_vip}"
+	ip addr list dev eth0 | grep " ${OCF_RESKEY_vip}/" > /dev/null
+	if [ $? -eq 0 ]; then
+		ocf_log debug "ip addr del ${OCF_RESKEY_vip}/${OCF_RESKEY_mask} dev eth0"
+		ip addr del ${OCF_RESKEY_vip}/${OCF_RESKEY_mask} dev eth0
+		if [ $? -ne 0 ]; then
+			exit $OCF_ERR_CONFIGURED
 		fi
 	fi
 	exit $OCF_SUCCESS
