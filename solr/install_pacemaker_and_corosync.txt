@@ -1,0 +1,36 @@
+資料の元：http://lab.adn-mobasia.net/?p=4296
+
+wget http://jaist.dl.sourceforge.jp/linux-ha/62369/pacemaker-repo-1.1.12-1.1.el6.x86_64.rpm
+sudo rpm -Uvh pacemaker-repo-1.1.12-1.1.el6.x86_64.rpm
+sudo yum -c /etc/yum.repos.d/pacemaker.repo install corosync pacemaker pcs
+
+※会社でやりやすいため、443->22リレーをやりました。
+お客様に渡す前、外しましょう。
+システムをパスワード認証できるように変えました。
+ROOTはまだできないですが、EC2-userができる。
+
+crm_verify -L -V
+pcs property set stonith-enabled=false
+
+pcs resource create EC2SolrFO\
+    ocf:heartbeat:EC2SolrFO \
+    vip=10.10.0.24 \
+    mask=24 \
+    awsdelay=5 \
+    solruser=solr \
+    solrcommand=start-mm-solr.sh \
+    meta migration-threshold=1
+
+pcs resource delete EC2SolrFO
+pcs resource create EC2SolrFO \
+    ocf:heartbeat:EC2SolrFO \
+    vip=10.10.0.24 \
+    mask=24 \
+    awsdelay=5 \
+    solruser=solr \
+    solrcommand=start-mm-solr.sh \
+    meta migration-threshold=1 \
+    op monitor interval=3 \
+        timeout=10 \
+        on-fail=restart
+
