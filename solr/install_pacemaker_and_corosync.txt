@@ -32,5 +32,6 @@ pcs resource create EC2SolrFO \
     meta migration-threshold=1 \
     op monitor interval=3 \
         timeout=10 \
-        on-fail=restart
+        on-fail=restart \
+        requires=nothing
 
