@@ -785,7 +785,7 @@
 
     <requestHandler name="/replication" class="solr.ReplicationHandler">
         <lst name="slave">
-            <str name="masterUrl">http://pcmk-1:8983/solr/mm_site2/replication</str>
+            <str name="masterUrl">http://masterhost:8983/solr/mm_site/replication</str>
             <str name="pollInterval">00:00:10</str>
             <str name="compression">internal</str>
             <str name="httpConnTimeout">5000</str>
