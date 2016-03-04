@@ -1364,6 +1364,7 @@
   <requestHandler name="/tvrh" class="solr.SearchHandler" startup="lazy">
     <lst name="defaults">
       <bool name="tv">true</bool>
+      <bool name="tv.tf_idf">true</bool>
     </lst>
     <arr name="last-components">
       <str>tvComponent</str>

@@ -130,8 +130,8 @@
    <field name="id" type="string" indexed="true" stored="true" required="true" multiValued="false" /> 
 
    <field name="mm_title" type="text_ja" indexed="true" stored="true" required="false" multiValued="true" /> 
-   <field name="mm_body" type="text_ja" indexed="true" stored="true" required="false" multiValued="true" termVectors="true" termPositions="true" /> 
-   <field name="mm_content" type="text_ja" indexed="true" stored="true" required="false" multiValued="true" />
+   <field name="mm_body" type="text_ja" indexed="true" stored="true" required="false" multiValued="true" /> 
+   <field name="mm_content" type="text_ja" indexed="true" stored="true" required="false" multiValued="true" termVectors="true" />
    <copyField source="mm_title" dest="mm_content" />
    <copyField source="mm_body" dest="mm_content" />
         
