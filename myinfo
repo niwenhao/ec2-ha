@@ -1,0 +1,13 @@
+#!/bin/sh
+
+inst_id=$(curl http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
+eth0_id=$(curl http://169.254.169.254/latest/meta-data/network/interfaces/macs/ 2>/dev/null | head -1 | sed 's/\/$//g')
+
+
+case $1 in
+    id)     echo $inst_id
+        ;;
+    ips)    curl http://169.254.169.254/latest/meta-data/network/interfaces/macs/${eth0_id}/local-ipv4s 2>/dev/null
+            echo
+            ;;
+esac
