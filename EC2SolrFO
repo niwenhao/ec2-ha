@@ -9,9 +9,10 @@
 
 #######################################################################
 
+SELF_MAC=$(ip link show dev eth0 | tail -1 | awk '{ print $2; }')
 SELF_INST_ID=$(curl http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
 CURR_INST_ID=""
-SELF_NIC_ID=""
+SELF_NIC_ID=$(curl http://169.254.169.254/latest/meta-data/network/interfaces/macs/${SELF_MAC}/interface-id)
 CURR_NIC_ID=""
 BASE_DIR="/tmp/EC2SecondIP"
 mkdir -p $BASE_DIR
@@ -186,7 +187,6 @@ ip_start() {
 			if [ $? -ne 0 ]; then
 				exit $OCF_ERR_CONFIGURED
 			fi
-			SELF_NIC_ID=$(find_nicid $SELF_DESC_FILE)
 			if [ $? -ne 0 ]; then
 				exit $OCF_ERR_CONFIGURED
 			fi
@@ -200,7 +200,6 @@ ip_start() {
 		if [ $? -ne 0 ]; then
 			exit $OCF_ERR_CONFIGURED
 		fi
-		SELF_NIC_ID=$(find_nicid $SELF_DESC_FILE)
 		if [ $? -ne 0 ]; then
 			exit $OCF_ERR_CONFIGURED
 		fi
