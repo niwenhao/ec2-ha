@@ -179,32 +179,21 @@ ip_start() {
 			ocf_log debug "Unassign ip(${OCF_RESKEY_vip})"
 			CURR_NIC_ID=$(find_nicid $CURR_DESC_FILE)
 			if [ $? -ne 0 ]; then
+				ocf_log error "Failed to take Nic id which hold the VIP"
 				exit $OCF_ERR_CONFIGURED
 			fi
 			unassign_ip_from_nic $CURR_NIC_ID ${OCF_RESKEY_vip}
 			ocf_log debug "Assign ip(${OCF_RESKEY_vip}) to me"
-			describe_with_instid ${SELF_INST_ID} ${SELF_DESC_FILE}
-			if [ $? -ne 0 ]; then
-				exit $OCF_ERR_CONFIGURED
-			fi
-			if [ $? -ne 0 ]; then
-				exit $OCF_ERR_CONFIGURED
-			fi
 			assign_ip_to_nic $SELF_NIC_ID ${OCF_RESKEY_vip}
 			if [ $? -ne 0 ]; then
+				ocf_log error "Failed to assign VIP to self instance"
 				exit $OCF_ERR_CONFIGURED
 			fi
 		fi
 	else
-		describe_with_instid ${SELF_INST_ID} ${SELF_DESC_FILE}
-		if [ $? -ne 0 ]; then
-			exit $OCF_ERR_CONFIGURED
-		fi
-		if [ $? -ne 0 ]; then
-			exit $OCF_ERR_CONFIGURED
-		fi
 		assign_ip_to_nic $SELF_NIC_ID ${OCF_RESKEY_vip}
 		if [ $? -ne 0 ]; then
+			ocf_log error "Failed to assign VIP to self instance"
 			exit $OCF_ERR_CONFIGURED
 		fi
 	fi
@@ -216,14 +205,16 @@ ip_start() {
 		ocf_log debug "ip addr add ${OCF_RESKEY_vip}/${OCF_RESKEY_mask} dev eth0"
 		ip addr add ${OCF_RESKEY_vip}/${OCF_RESKEY_mask} dev eth0
 		if [ $? -ne 0 ]; then
+			ocf_log error "Failed to add VIP alias to eth0"
 			exit $OCF_ERR_CONFIGURED
 		fi
 	fi
 
 	su - ${OCF_RESKEY_solruser} -c "${OCF_RESKEY_solrcommand}"
 	
-        ps aux | grep '^solr.*solr.install.dir' > /dev/null
+        ps aux | grep '^tomcat.*solr.solr.home' > /dev/null
 	if [ $? -ne 0 ]; then
+		ocf_log error "Failed to find tomcat process"
 		exit $OCF_ERR_INSTALLED
 	fi
 	
@@ -235,6 +226,7 @@ ip_stop() {
 	ocf_log debug "Describe instance with ip(${OCF_RESKEY_vip})"
 	describe_with_nicip ${OCF_RESKEY_vip} ${CURR_DESC_FILE}
 	if [ $? -ne 0 ]; then
+		ocf_log error "Failed to describe instance which held the VIP"
 		exit $OCF_ERR_CONFIGURED
 	fi
 	instid=$(find_instid $CURR_DESC_FILE)
@@ -243,6 +235,7 @@ ip_stop() {
 			ocf_log debug "Unassign ip (${OCF_RESKEY_vip})"
 			nicid=$(find_nicid ${CURR_DESC_FILE})
 			if [ $? -ne 0 ]; then
+				ocf_log error "Failed to take Nic id which hold the VIP"
 				exit $OCF_ERR_CONFIGURED
 			fi
 			unassign_ip_from_nic $nicid ${OCF_RESKEY_vip}
@@ -256,6 +249,7 @@ ip_stop() {
 		ocf_log debug "ip addr del ${OCF_RESKEY_vip}/${OCF_RESKEY_mask} dev eth0"
 		ip addr del ${OCF_RESKEY_vip}/${OCF_RESKEY_mask} dev eth0
 		if [ $? -ne 0 ]; then
+			ocf_log error "Failed to remove VIP alias to eth0"
 			exit $OCF_ERR_CONFIGURED
 		fi
 	fi
@@ -270,11 +264,13 @@ ip_monitor() {
 
 	curl http://169.254.169.254/latest/meta-data/network/interfaces/macs/${nicid}local-ipv4s 2>/dev/null | grep ${OCF_RESKEY_vip} > /dev/null
 	if [ $? -ne 0 ]; then
+		ocf_log error "Failed because have not held VIP"
 		exit $OCF_NOT_RUNNING
 	fi
 
 	curl http://${OCF_RESKEY_vip}:8983/solr/ > /dev/null
 	if [ $? -ne 0 ]; then
+		ocf_log error "Failed because cann't access solr via VIP"
 		exit $OCF_NOT_RUNNING
 	fi
 	exit $OCF_SUCCESS
