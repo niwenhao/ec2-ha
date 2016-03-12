@@ -211,6 +211,8 @@ ip_start() {
 	fi
 
 	su - ${OCF_RESKEY_solruser} -c "${OCF_RESKEY_solrcommand}"
+
+	sleep ${OCF_RESKEY_awsdelay}
 	
         ps aux | grep '^tomcat.*solr.solr.home' > /dev/null
 	if [ $? -ne 0 ]; then
