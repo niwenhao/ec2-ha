@@ -214,7 +214,7 @@ ip_start() {
 
 	sleep ${OCF_RESKEY_awsdelay}
 	
-        ps aux | grep '^tomcat.*solr.solr.home' > /dev/null
+        lsof -i | grep ':8983' > /dev/null
 	if [ $? -ne 0 ]; then
 		ocf_log err "Failed to find tomcat process"
 		exit $OCF_ERR_INSTALLED
